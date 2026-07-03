@@ -23,6 +23,10 @@ on:
         - all
         - packages
         - bootc-image
+      with-multus:
+        description: Build with multus
+        default: 0
+        type: number
 
 jobs:
   generate-version:
@@ -84,6 +88,7 @@ jobs:
           bootc-image-url: quay.io/centos-bootc/centos-bootc
           bootc-image-tag: ${{ steps.set-bootc-image-tag.outputs.bootc-image-tag }}
           build: ${{ inputs.build }}
+          with-multus: ${{ inputs.with-multus }}
 
       # Test the local container image with the quick start and clean procedures
       # before releasing the artifacts. Make sure not to run the clean scripts
