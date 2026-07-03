@@ -2,12 +2,24 @@ name: build-microshift
 description: Reusable action to build MicroShift RPMs and container images
 
 inputs:
+  ushift-git-url:
+    description: MicroShift source repository URL
+    required: false
+    default: https://github.com/openshift/microshift.git
   ushift-gitref:
-    description: MicroShift git ref (branch, tag, commit) from https://github.com/openshift/microshift/branches
+    description: MicroShift git ref (branch, tag, commit)
     required: true
   okd-version-tag:
-    description: OKD version tag from https://quay.io/repository/okd/scos-release?tab=tags
+    description: OKD version tag
     required: true
+  okd-release-image-x86-64:
+    description: Optional amd64 OKD release image repository without a tag
+    required: false
+    default: ""
+  okd-release-image-aarch64:
+    description: Optional arm64 OKD release image repository without a tag
+    required: false
+    default: ""
   bootc-image-url:
     description: Base Bootc image URL used in `make image` command
     required: false
@@ -28,6 +40,14 @@ inputs:
     description: Enable Multus CNI
     required: false
     default: 0
+  with-olm:
+    description: Enable OLM
+    required: false
+    default: 0
+  with-topolvm:
+    description: Build the image with TopoLVM
+    required: false
+    default: 1
   node-count:
     description: Number of nodes in the MicroShift cluster
     required: false
@@ -40,6 +60,10 @@ inputs:
     description: Skip the prebuild step
     required: false
     default: false
+  kine-version:
+    description: Kine version tag from https://github.com/k3s-io/kine/releases
+    required: false
+    default: v0.17.0
 
 runs:
   using: "composite"
@@ -61,9 +85,18 @@ runs:
 
         # Run the RPM build process.
         cd ${GITHUB_WORKSPACE}/
+        make_args=()
+        if [ -n "${{ inputs.okd-release-image-x86-64 }}" ]; then
+          make_args+=("OKD_RELEASE_IMAGE_X86_64=${{ inputs.okd-release-image-x86-64 }}")
+        fi
+        if [ -n "${{ inputs.okd-release-image-aarch64 }}" ]; then
+          make_args+=("OKD_RELEASE_IMAGE_AARCH64=${{ inputs.okd-release-image-aarch64 }}")
+        fi
         make rpm \
+          USHIFT_GIT_URL="${{ inputs.ushift-git-url }}" \
           USHIFT_GITREF="${{ inputs.ushift-gitref }}" \
           OKD_VERSION_TAG="${{ inputs.okd-version-tag }}" \
+          "${make_args[@]}" \
           RPM_OUTDIR=/mnt/rpms
 
     - name: Pull the bootc base image
@@ -107,11 +140,14 @@ runs:
         [ "${{ inputs.isolated-network }}" = "1" ] && make_opts+=("EMBED_CONTAINER_IMAGES=1")
         [ "${{ inputs.isolated-network }}" = "1" ] && make_opts+=("EMBED_TEST_IMAGE=1")
         [ "${{ inputs.ovnk-networking }}"  = "1" ] && make_opts+=("WITH_KINDNET=0")
-        [ "${{ inputs.with-multus }}"     = "1" ] && make_opts+=("WITH_MULTUS=1")
+        [ "${{ inputs.with-multus }}"      = "1" ] && make_opts+=("WITH_MULTUS=1")
+        [ "${{ inputs.with-olm }}"         = "1" ] && make_opts+=("WITH_OLM=1")
+        [ "${{ inputs.with-topolvm }}"     = "0" ] && make_opts+=("WITH_TOPOLVM=0")
 
         make image \
           BOOTC_IMAGE_URL="${{ inputs.bootc-image-url }}" \
           BOOTC_IMAGE_TAG="${{ inputs.bootc-image-tag }}" \
+          KINE_VERSION="${{ inputs.kine-version }}" \
           ${make_opts[@]}
 
     - name: Run a test to verify that MicroShift is functioning properly
@@ -124,6 +160,7 @@ runs:
         # Adjust the make options based on the inputs
         make_opts=()
         [ "${{ inputs.isolated-network }}" = "1" ] && make_opts+=("ISOLATED_NETWORK=1")
+        make_opts+=("WITH_TOPOLVM=${{ inputs.with-topolvm }}")
 
         # Run the MicroShift container
         make run ${make_opts[@]}
@@ -137,8 +174,7 @@ runs:
         WITH_MULTUS="${{ inputs.with-multus }}" \
           ./src/network_smoke_test.sh "${network_mode}"
 
-        # Run a test to verify that TopoLVM is functioning properly (skip in isolated-network mode)
-        if [ "${{ inputs.isolated-network }}" != "1" ]; then
+        if [ "${{ inputs.with-topolvm }}" = "1" ] && [ "${{ inputs.isolated-network }}" != "1" ]; then
           make env "CMD=./src/topolvm/tests/createWorkloads.sh"
         fi
         for i in $(seq 2 ${{ inputs.node-count }}); do

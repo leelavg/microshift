@@ -16,6 +16,7 @@ API_SERVER_PORT="${API_SERVER_PORT:-6443}"
 VG_NAME="${VG_NAME:-myvg1}"
 ISOLATED_NETWORK="${ISOLATED_NETWORK:-0}"
 EXPOSE_KUBEAPI_PORT="${EXPOSE_KUBEAPI_PORT:-0}"
+WITH_TOPOLVM="${WITH_TOPOLVM:-1}"
 
 if [ -z "${VG_NAME}" ]; then
     echo "ERROR: VG_NAME is required" >&2
@@ -38,6 +39,10 @@ _is_container_created() {
 }
 
 create_topolvm_backend() {
+    if [ "${WITH_TOPOLVM}" = "0" ]; then
+        return 0
+    fi
+
     if [ -f "${LVM_DISK}" ]; then
         echo "INFO: '${LVM_DISK}' exists, reusing"
         return 0
@@ -58,6 +63,11 @@ delete_topolvm_backend() {
         local -r device_name="$(sudo losetup -j "${LVM_DISK}" | cut -d: -f1)"
         [ -n "${device_name}" ] && sudo losetup -d "${device_name}" || true
         sudo rm -rf "$(dirname "${LVM_DISK}")"
+    fi
+
+    if [ -f "${EXTRA_CONFIG}" ]; then
+        sudo rm -f "${EXTRA_CONFIG}"
+        sudo rmdir "$(dirname "${EXTRA_CONFIG}")" 2>/dev/null || true
     fi
 }
 
@@ -164,6 +174,7 @@ _add_node() {
     local mount_opts=""
     if [ "${EXPOSE_KUBEAPI_PORT}" = "1" ]; then
         port_opts="-p ${API_SERVER_PORT}:${API_SERVER_PORT}"
+        sudo mkdir -p "$(dirname "${EXTRA_CONFIG}")"
         echo -e "apiServer:\n  subjectAltNames:\n    - $(_get_hostname)" | sudo tee "${EXTRA_CONFIG}" >/dev/null
         mount_opts="--volume ${EXTRA_CONFIG}:/etc/microshift/config.d/api_server.yaml:ro"
     fi

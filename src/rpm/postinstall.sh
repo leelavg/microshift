@@ -51,12 +51,18 @@ done
 
 # Configure network and add some useful utilities
 dnf install -y firewalld jq bash-completion
+source /etc/os-release
+if [ "${ID}" = "centos" ] && [ "${VERSION_ID}" = "10" ]; then
+    # Stream 10 base images can ship libnftnl newer than the BaseOS nftables.
+    dnf distro-sync -y firewalld nftables libnftnl
+fi
 firewall-offline-cmd --zone=trusted --add-source=10.42.0.0/16
 firewall-offline-cmd --zone=trusted --add-source=169.254.169.1
 # Multinode clusters require connectivity on both apiserver and etcd
 firewall-offline-cmd --zone=public --add-port=6443/tcp
 firewall-offline-cmd --zone=public --add-port=2379/tcp
 firewall-offline-cmd --zone=public --add-port=2380/tcp
+firewall-offline-cmd --zone=public --add-port=10250/tcp
 
 # Configure limits for cAdvisor and kubelet
 cat > /etc/sysctl.d/99-microshift.conf <<EOF
@@ -76,6 +82,18 @@ if rpm -q microshift-kindnet &>/dev/null; then
     systemctl disable systemd-resolved &>/dev/null || true
 
     install_cni_plugins
+fi
+
+if rpm -q microshift-multus &>/dev/null; then
+    mkdir -p /etc/crio/crio.conf.d
+    cat > /etc/crio/crio.conf.d/20-multus-cni-plugins.conf <<'EOF'
+[crio.network]
+cni_default_network = "multus-cni-network"
+plugin_dirs = [
+        "/run/cni/bin",
+        "/usr/libexec/cni",
+]
+EOF
 fi
 
 # Create a link to the default kubeconfig.

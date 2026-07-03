@@ -24,6 +24,7 @@ ARG SPEC_TOPOLVM=/tmp/topolvm.spec
 ARG LVMD_CONFIG_SCRIPT=/tmp/prepare_lvmd_config.sh
 ARG VG_NAME
 ARG SPARE_GB
+ARG SPEC_WHEREABOUTS=/tmp/whereabouts.spec
 
 # Verify mandatory build arguments
 RUN if [ -z "${OKD_VERSION_TAG}" ]; then \
@@ -77,16 +78,19 @@ COPY --chmod=755 ./src/topolvm/prepare_lvmd_config.sh ${LVMD_CONFIG_SCRIPT}
 RUN ${LVMD_CONFIG_SCRIPT} ./packaging/topolvm/lvmd.yaml "${VG_NAME}" "${SPARE_GB}" && \
     rm -f ${LVMD_CONFIG_SCRIPT}
 
-RUN ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-kindnet "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
-    ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-kindnet "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)" && \
-    ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
-    ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)"
+COPY ./src/whereabouts/whereabouts.spec "${SPEC_WHEREABOUTS}"
+COPY ./src/whereabouts/assets/whereabouts/ ./assets/optional/whereabouts/
+
+RUN ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
+    ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)" && \
+    ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-whereabouts "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
+    ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-whereabouts "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)"
 
 COPY --chmod=755 ./src/image/modify-spec.py ${USHIFT_MODIFY_SPEC_SCRIPT}
 # Disable the RPM and SRPM checks in the make-rpm.sh script
 # and modify the microshift.spec to remove packages not yet supported by the upstream
 RUN sed -i -e 's,CHECK_RPMS="y",,g' -e 's,CHECK_SRPMS="y",,g' ./packaging/rpm/make-rpm.sh && \
-    "${USHIFT_MODIFY_SPEC_SCRIPT}" ./packaging/rpm/microshift.spec "${SPEC_KINDNET}" "${SPEC_TOPOLVM}"
+    "${USHIFT_MODIFY_SPEC_SCRIPT}" ./packaging/rpm/microshift.spec "${SPEC_KINDNET}" "${SPEC_TOPOLVM}" "${SPEC_WHEREABOUTS}"
 
 COPY --chmod=755 ./src/image/build-rpms.sh ${USHIFT_BUILDRPMS_SCRIPT}
 ARG BUILD_TIMESTAMP

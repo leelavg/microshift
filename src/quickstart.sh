@@ -9,6 +9,7 @@ TAG=${TAG:-latest}
 CONTAINER_NAME="${CONTAINER_NAME:-microshift-okd}"
 LVM_DISK="/var/lib/microshift-okd/lvmdisk.image"
 VG_NAME="myvg1"
+WITH_TOPOLVM="${WITH_TOPOLVM:-1}"
 PODMAN_VMAJOR=4
 
 function check_prerequisites() {
@@ -219,7 +220,9 @@ fi
 
 # Run the procedures
 pull_bootc_image     "${IMAGE}:${TAG}"
-prepare_lvm_disk     "${LVM_DISK}" "${VG_NAME}"
+if [ "${WITH_TOPOLVM}" = "1" ]; then
+    prepare_lvm_disk "${LVM_DISK}" "${VG_NAME}"
+fi
 run_bootc_image      "${IMAGE}:${TAG}"
 
 # Follow-up instructions

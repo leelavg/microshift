@@ -26,8 +26,16 @@ usage() {
   echo "      Build OKD images locally and push to staging registry"
   echo "      (${STAGING_REGISTRY})"
   echo ""
+  echo "  staging-whereabouts <okd-version> <ocp-branch> <target-arch>"
+  echo "      Build only Whereabouts and update an existing release"
+  echo "      (${STAGING_REGISTRY})"
+  echo ""
   echo "  production <okd-version> <ocp-branch> <target-arch>"
   echo "      Push previously built images to production registry"
+  echo "      (${PRODUCTION_REGISTRY})"
+  echo ""
+  echo "  production-whereabouts <okd-version> <ocp-branch> <target-arch>"
+  echo "      Promote only Whereabouts and its updated release"
   echo "      (${PRODUCTION_REGISTRY})"
   echo ""
   echo "  list-packages <okd-version>"
@@ -341,6 +349,19 @@ containernetworking_plugins_microshift_image() {
   podman build --platform "linux/${TARGET_ARCH}" -t "${images[containernetworking-plugins-microshift]}" -f "${dockerfile_path}" .
 }
 
+# Function to handle whereabouts-cni image repository
+whereabouts_cni_image() {
+  local -r repo_url="https://github.com/openshift/whereabouts-cni"
+  local -r dockerfile_path="Dockerfile.openshift"
+  local -r repo="${WORKDIR}/$(basename "${repo_url}")"
+
+  git_clone_repo "${repo_url}" "${OCP_BRANCH}" "${repo}"
+  sed -i 's|^FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang|FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang|' "${dockerfile_path}"
+  sed -i "s|^FROM registry.ci.openshift.org/ocp/.*:base-rhel9|FROM ${images[base]}|" "${dockerfile_path}"
+
+  podman build --platform "linux/${TARGET_ARCH}" -t "${images[whereabouts-cni]}" -f "${dockerfile_path}" .
+}
+
 # Run all the image creation procedures
 create_images() {
   base_image
@@ -356,6 +377,7 @@ create_images() {
   operator_lifecycle_manager_image
   multus_cni_microshift_image
   containernetworking_plugins_microshift_image
+  whereabouts_cni_image
   # ovn_kubernetes_microshift_image
 }
 
@@ -430,6 +452,7 @@ create_new_okd_release() {
       "operator-registry=${images_sha[operator-registry]}" \
       "multus-cni-microshift=${images_sha[multus-cni-microshift]}" \
       "containernetworking-plugins-microshift=${images_sha[containernetworking-plugins-microshift]}" \
+      "multus-whereabouts-ipam-cni=${images_sha[whereabouts-cni]}" \
       --to-image "${OKD_RELEASE_IMAGE}"
 
       # "ovn-kubernetes-base=${images_sha[ovn-kubernetes-base]}" \
@@ -504,12 +527,60 @@ push_staging() {
   echo "  $0 production ${OKD_VERSION} ${OCP_BRANCH} ${TARGET_ARCH}"
 }
 
+push_whereabouts_release() {
+  local -r staging_whereabouts="${STAGING_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
+  local -r staging_release="${STAGING_REGISTRY}/okd-release-${TARGET_ARCH}:${OKD_VERSION}"
+  local source_release
+
+  # Use the matching upstream release as the base and replace only Whereabouts.
+  if [ "${TARGET_ARCH}" = "arm64" ]; then
+    source_release="ghcr.io/microshift-io/okd/okd-release-arm64:${OKD_VERSION}"
+  else
+    source_release="quay.io/okd/scos-release:${OKD_VERSION}"
+  fi
+
+  check_podman_login
+  check_release_image_exists
+  skopeo inspect "docker://${source_release}" >/dev/null
+  base_image
+  whereabouts_cni_image
+  podman tag "${images[whereabouts-cni]}" "${staging_whereabouts}"
+  podman push "${staging_whereabouts}"
+
+  local -r whereabouts_digest="$(skopeo inspect --format '{{.Name}}@{{.Digest}}' "docker://${staging_whereabouts}")"
+  oc adm release new \
+    --from-release "${source_release}" \
+    --keep-manifest-list \
+    "multus-whereabouts-ipam-cni=${whereabouts_digest}" \
+    --to-image "${staging_release}"
+  oc adm release info "${staging_release}" --image-for=multus-whereabouts-ipam-cni >/dev/null
+}
+
 # Production mode: retag staging images and push to production registry
 push_production() {
   check_podman_login
   check_release_image_exists
   retag_staging_to_production
   push_okd_images
+}
+
+push_whereabouts_production() {
+  local -r staging_whereabouts="${STAGING_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
+  local -r production_whereabouts="${PRODUCTION_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
+  local -r staging_release="${STAGING_REGISTRY}/okd-release-${TARGET_ARCH}:${OKD_VERSION}"
+  local -r production_release="${PRODUCTION_REGISTRY}/okd-release-${TARGET_ARCH}:${OKD_VERSION}"
+
+  check_podman_login
+  podman tag "${staging_whereabouts}" "${production_whereabouts}"
+  podman push "${production_whereabouts}"
+
+  local -r whereabouts_digest="$(skopeo inspect --format '{{.Name}}@{{.Digest}}' "docker://${production_whereabouts}")"
+  oc adm release new \
+    --from-release "${staging_release}" \
+    --keep-manifest-list \
+    "multus-whereabouts-ipam-cni=${whereabouts_digest}" \
+    --to-image "${production_release}"
+  oc adm release info "${production_release}" --image-for=multus-whereabouts-ipam-cni >/dev/null
 }
 
 # List packages mode: output staging package names for cleanup
@@ -569,7 +640,8 @@ if [[ "${MODE}" != "list-packages" ]]; then
   TARGET_ARCH="$4"
 
   # Validate mode
-  if [[ "${MODE}" != "staging" ]] && [[ "${MODE}" != "production" ]]; then
+  if [[ "${MODE}" != "staging" ]] && [[ "${MODE}" != "staging-whereabouts" ]] && \
+     [[ "${MODE}" != "production" ]] && [[ "${MODE}" != "production-whereabouts" ]]; then
     echo "ERROR: Invalid mode '${MODE}'. Must be 'staging' or 'production'"
     usage
   fi
@@ -589,9 +661,9 @@ if [[ "${MODE}" != "list-packages" ]]; then
   esac
 
   # Set target registry based on mode
-  if [[ "${MODE}" == "staging" ]]; then
+  if [[ "${MODE}" == "staging" ]] || [[ "${MODE}" == "staging-whereabouts" ]]; then
     TARGET_REGISTRY="${STAGING_REGISTRY}"
-  elif [[ "${MODE}" == "production" ]]; then
+  elif [[ "${MODE}" == "production" ]] || [[ "${MODE}" == "production-whereabouts" ]]; then
     TARGET_REGISTRY="${PRODUCTION_REGISTRY}"
   fi
 
@@ -615,6 +687,7 @@ images=(
     [operator-registry]="${TARGET_REGISTRY}/operator-registry:${OKD_VERSION}-${TARGET_ARCH}"
     [multus-cni-microshift]="${TARGET_REGISTRY}/multus-cni-microshift:${OKD_VERSION}-${TARGET_ARCH}"
     [containernetworking-plugins-microshift]="${TARGET_REGISTRY}/containernetworking-plugins-microshift:${OKD_VERSION}-${TARGET_ARCH}"
+    [whereabouts-cni]="${TARGET_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
     # [ovn-kubernetes-base]="${TARGET_REGISTRY}/ovn-kubernetes-base:${OKD_VERSION}-${TARGET_ARCH}"
     # [ovn-kubernetes-microshift]="${TARGET_REGISTRY}/ovn-kubernetes-microshift:${OKD_VERSION}-${TARGET_ARCH}"
 )
@@ -625,7 +698,13 @@ if [[ "${MODE}" == "list-packages" ]]; then
 elif [[ "${MODE}" == "staging" ]]; then
   check_prereqs
   push_staging
+elif [[ "${MODE}" == "staging-whereabouts" ]]; then
+  check_prereqs
+  push_whereabouts_release
 elif [[ "${MODE}" == "production" ]]; then
   check_prereqs
   push_production
+elif [[ "${MODE}" == "production-whereabouts" ]]; then
+  check_prereqs
+  push_whereabouts_production
 fi

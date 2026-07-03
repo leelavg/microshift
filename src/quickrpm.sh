@@ -81,7 +81,7 @@ function install_microshift_packages() {
     # Disable weak dependencies to avoid the deployment of the microshift-networking
     # RPM, which is not necessary when microshift-kindnet RPM is installed.
     dnf install -y --setopt=install_weak_deps=False \
-        microshift microshift-kindnet microshift-topolvm
+        microshift microshift-kindnet microshift-whereabouts microshift-topolvm
 
     # shellcheck disable=SC1091
     source /etc/os-release

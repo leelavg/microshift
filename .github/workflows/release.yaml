@@ -8,21 +8,33 @@ on:
   workflow_dispatch:
     inputs:
       ushift-gitref:
-        default: "main"
-        description: MicroShift git ref (branch, tag, commit) from https://github.com/openshift/microshift/branches
+        default: "builds-5.1"
+        description: MicroShift git ref (branch, tag, commit)
         type: string
       okd-version-tag:
         default: "latest"
-        description: OKD version tag from https://quay.io/repository/okd/scos-release?tab=tags
+        description: OKD version tag
         type: string
-      build:
-        type: choice
-        description: Types of artifacts to build
-        default: all
-        options:
-        - all
-        - packages
-        - bootc-image
+      okd-release-image-x86-64:
+        default: ""
+        description: Optional amd64 OKD release image repository without a tag
+        type: string
+      okd-release-image-aarch64:
+        default: "ghcr.io/leelavg/microshift/okd-release-arm64"
+        description: Optional arm64 OKD release image repository without a tag
+        type: string
+      kine-version:
+        description: Kine version tag from https://github.com/k3s-io/kine/releases
+        default: v0.17.5
+        type: string
+
+env:
+  USHIFT_GIT_URL: "https://github.com/leelavg/microshift-ocp.git"
+  BUILD: "all"
+  WITH_MULTUS: "1"
+  WITH_OLM: "1"
+  WITH_TOPOLVM: "0"
+  BUILD_DEB: "false"
 
 jobs:
   generate-version:
@@ -79,25 +91,33 @@ jobs:
       - name: Run the build action
         uses: ./.github/actions/build
         with:
+          ushift-git-url: ${{ env.USHIFT_GIT_URL }}
           ushift-gitref: ${{ inputs.ushift-gitref }}
           okd-version-tag: ${{ inputs.okd-version-tag != 'latest' && inputs.okd-version-tag || steps.detect-okd-version.outputs.okd-version-tag }}
+          okd-release-image-x86-64: ${{ inputs.okd-release-image-x86-64 }}
+          okd-release-image-aarch64: ${{ inputs.okd-release-image-aarch64 }}
           bootc-image-url: quay.io/centos-bootc/centos-bootc
           bootc-image-tag: ${{ steps.set-bootc-image-tag.outputs.bootc-image-tag }}
-          build: ${{ inputs.build }}
+          build: ${{ env.BUILD }}
+          with-multus: ${{ env.WITH_MULTUS }}
+          with-olm: ${{ env.WITH_OLM }}
+          with-topolvm: ${{ env.WITH_TOPOLVM }}
+          kine-version: ${{ inputs.kine-version }}
 
       # Test the local container image with the quick start and clean procedures
       # before releasing the artifacts. Make sure not to run the clean scripts
       # because the images are needed for the release process.
       - name: Run the quick start script and clean scripts
-        if: contains(fromJSON('["all", "bootc-image"]'), inputs.build)
+        if: contains(fromJSON('["all", "bootc-image"]'), env.BUILD)
         uses: ./.github/actions/quick-start-clean
         with:
           image-ref: localhost/microshift-okd:latest
           run-clean: false
+          with-topolvm: ${{ env.WITH_TOPOLVM }}
 
       # Prepare the RPM archives to be released before converting to DEB packages.
       - name: Prepare the RPM archives
-        if: contains(fromJSON('["all", "packages"]'), inputs.build)
+        if: contains(fromJSON('["all", "packages"]'), env.BUILD)
         shell: bash
         run : |
           # Archive sources separately from the RPMs
@@ -128,7 +148,7 @@ jobs:
         # This step is run after the RPM archives are prepared to avoid
         # including DEB packages in the RPM archive.
       - name: Convert the RPMs to DEB packages
-        if: contains(fromJSON('["all", "packages"]'), inputs.build)
+        if: contains(fromJSON('["all", "packages"]'), env.BUILD) && env.BUILD_DEB == 'true'
         uses: ./.github/actions/build-deb
         with:
           ushift-gitref: ${{ inputs.ushift-gitref }}
@@ -136,31 +156,31 @@ jobs:
           build-rpms: false
 
       - name: Prepare the DEB archives
-        if: contains(fromJSON('["all", "packages"]'), inputs.build)
+        if: contains(fromJSON('["all", "packages"]'), env.BUILD) && env.BUILD_DEB == 'true'
         shell: bash
         run: |
           cd /mnt/rpms/deb
           sudo tar zcvf /mnt/release/microshift-debs-$(uname -m).tgz .
 
       - name: Release RPM and DEB packages
-        if: contains(fromJSON('["all", "packages"]'), inputs.build)
+        if: contains(fromJSON('["all", "packages"]'), env.BUILD)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
           files: |
             /mnt/release/microshift-rpms-*.tgz
-            /mnt/release/microshift-debs-*.tgz
+            ${{ env.BUILD_DEB == 'true' && '/mnt/release/microshift-debs-*.tgz' || '' }}
             /mnt/release/microshift-src.tgz
           overwrite_files: true
 
       - name: Login to GitHub Container Registry
-        if: contains(fromJSON('["all", "bootc-image"]'), inputs.build)
+        if: contains(fromJSON('["all", "bootc-image"]'), env.BUILD)
         uses: ./.github/actions/podman-login
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Bootc container image for the target architecture
-        if: contains(fromJSON('["all", "bootc-image"]'), inputs.build)
+        if: contains(fromJSON('["all", "bootc-image"]'), env.BUILD)
         shell: bash
         run: |
           set -euo pipefail
@@ -190,13 +210,13 @@ jobs:
           echo "version=$(cat /tmp/version.txt)" >> "${GITHUB_OUTPUT}"
 
       - name: Login to GitHub Container Registry
-        if: contains(fromJSON('["all", "bootc-image"]'), inputs.build)
+        if: contains(fromJSON('["all", "bootc-image"]'), env.BUILD)
         uses: ./.github/actions/podman-login
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Bootc container image manifest
-        if: contains(fromJSON('["all", "bootc-image"]'), inputs.build)
+        if: contains(fromJSON('["all", "bootc-image"]'), env.BUILD)
         shell: bash
         run: |
           set -euo pipefail
@@ -216,7 +236,7 @@ jobs:
             envsubst < .github/workflows/release.md > /tmp/release.md
 
       - name: Add release note for bootc image usage
-        if: contains(fromJSON('["all", "bootc-image"]'), inputs.build)
+        if: contains(fromJSON('["all", "bootc-image"]'), env.BUILD)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
