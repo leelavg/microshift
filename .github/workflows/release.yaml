@@ -25,7 +25,11 @@ on:
         - bootc-image
       with-multus:
         description: Build with multus
-        default: 0
+        default: 1
+        type: number
+      with-olm:
+        description: Build with OLM
+        default: 1
         type: number
 
 jobs:
@@ -89,6 +93,7 @@ jobs:
           bootc-image-tag: ${{ steps.set-bootc-image-tag.outputs.bootc-image-tag }}
           build: ${{ inputs.build }}
           with-multus: ${{ inputs.with-multus }}
+          with-olm: ${{ inputs.with-olm }}
 
       # Test the local container image with the quick start and clean procedures
       # before releasing the artifacts. Make sure not to run the clean scripts
