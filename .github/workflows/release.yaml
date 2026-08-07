@@ -31,6 +31,10 @@ on:
         description: Build with OLM
         default: 1
         type: number
+      build-deb:
+        description: Build DEB packages
+        default: false
+        type: boolean
 
 jobs:
   generate-version:
@@ -138,7 +142,7 @@ jobs:
         # This step is run after the RPM archives are prepared to avoid
         # including DEB packages in the RPM archive.
       - name: Convert the RPMs to DEB packages
-        if: contains(fromJSON('["all", "packages"]'), inputs.build)
+        if: contains(fromJSON('["all", "packages"]'), inputs.build) && inputs.build-deb
         uses: ./.github/actions/build-deb
         with:
           ushift-gitref: ${{ inputs.ushift-gitref }}
@@ -146,7 +150,7 @@ jobs:
           build-rpms: false
 
       - name: Prepare the DEB archives
-        if: contains(fromJSON('["all", "packages"]'), inputs.build)
+        if: contains(fromJSON('["all", "packages"]'), inputs.build) && inputs.build-deb
         shell: bash
         run: |
           cd /mnt/rpms/deb
@@ -159,7 +163,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           files: |
             /mnt/release/microshift-rpms-*.tgz
-            /mnt/release/microshift-debs-*.tgz
+            ${{ inputs.build-deb && '/mnt/release/microshift-debs-*.tgz' || '' }}
             /mnt/release/microshift-src.tgz
           overwrite_files: true
 
