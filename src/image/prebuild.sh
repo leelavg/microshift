@@ -196,6 +196,10 @@ replace_multus_assets() {
             '.images[$container] = $img' "${multus_release_json}" >"${temp_json}"
         mv "${temp_json}" "${multus_release_json}"
     done
+
+    # Fix Multus DaemonSet args: replace broken bash arithmetic with working condition
+    local -r multus_ds="${MICROSHIFT_ROOT}/assets/components/multus/06-daemonset.yaml"
+    sed -i 's/if \$((.*now - start > 5 \* 60.*))/if [ $((now - start)) -gt 300 ]/g' "${multus_ds}"
 }
 
 fix_rpm_spec() {
