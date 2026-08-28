@@ -1,6 +1,7 @@
 # Optionally allow for the base image override
 ARG BOOTC_IMAGE_URL=quay.io/centos-bootc/centos-bootc
 ARG BOOTC_IMAGE_TAG=stream9
+ARG KINE_VERSION=v0.17.0
 
 FROM localhost/microshift-okd-rpm:latest AS builder
 FROM ${BOOTC_IMAGE_URL}:${BOOTC_IMAGE_TAG}
@@ -48,6 +49,20 @@ RUN ${REPO_CONFIG_SCRIPT} -create ${USHIFT_RPM_REPO_PATH} && \
 # Post-install MicroShift configuration
 COPY --chmod=755 ./src/rpm/postinstall.sh ${USHIFT_POSTINSTALL_SCRIPT}
 RUN ${USHIFT_POSTINSTALL_SCRIPT} && rm -vf "${USHIFT_POSTINSTALL_SCRIPT}"
+
+# Install kine for SQLite backend, preserve original etcd
+ARG KINE_VERSION
+RUN set -eux && \
+    mv /usr/bin/microshift-etcd /usr/bin/microshift-etcd-orig && \
+    ARCH=$(uname -m) && \
+    KINE_ARCH=${ARCH} && \
+    [ "${ARCH}" = "x86_64" ] && KINE_ARCH=amd64 || true && \
+    [ "${ARCH}" = "aarch64" ] && KINE_ARCH=arm64 || true && \
+    curl -fsSL --retry 5 -o /usr/bin/microshift-etcd-kine \
+        "https://github.com/k3s-io/kine/releases/download/${KINE_VERSION}/kine-${KINE_ARCH}-nocgo" && \
+    chmod 755 /usr/bin/microshift-etcd-kine
+COPY --chmod=755 ./src/etcd/microshift-etcd-sqlite.sh /usr/bin/microshift-etcd-sqlite
+COPY --chmod=755 ./src/etcd/microshift-etcd-wrapper.sh /usr/bin/microshift-etcd
 
 # If the EMBED_CONTAINER_IMAGES environment variable is set to 1, temporarily
 # configure user namespace UID and GID mappings. This allows the skopeo command

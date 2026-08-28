@@ -23,6 +23,7 @@ WITH_TOPOLVM ?= 1
 WITH_OLM ?= 0
 WITH_MULTUS ?= 0
 EMBED_CONTAINER_IMAGES ?= 0
+KINE_VERSION ?= v0.17.0
 
 # Options used in the 'run' target
 LVM_VOLSIZE ?= 1G
@@ -132,6 +133,7 @@ image:
         --label okd.version="${OKD_VERSION_TAG}" \
         --build-arg BOOTC_IMAGE_URL="${BOOTC_IMAGE_URL}" \
         --build-arg BOOTC_IMAGE_TAG="${BOOTC_IMAGE_TAG}" \
+        --build-arg KINE_VERSION="${KINE_VERSION}" \
     	--env WITH_KINDNET="${WITH_KINDNET}" \
     	--env WITH_TOPOLVM="${WITH_TOPOLVM}" \
     	--env WITH_OLM="${WITH_OLM}" \

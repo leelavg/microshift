@@ -35,6 +35,10 @@ on:
         description: Build DEB packages
         default: false
         type: boolean
+      kine-version:
+        description: Kine version tag from https://github.com/k3s-io/kine/releases
+        default: v0.17.0
+        type: string
 
 jobs:
   generate-version:
@@ -98,6 +102,7 @@ jobs:
           build: ${{ inputs.build }}
           with-multus: ${{ inputs.with-multus }}
           with-olm: ${{ inputs.with-olm }}
+          kine-version: ${{ inputs.kine-version }}
 
       # Test the local container image with the quick start and clean procedures
       # before releasing the artifacts. Make sure not to run the clean scripts

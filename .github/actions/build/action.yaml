@@ -44,6 +44,10 @@ inputs:
     description: Skip the prebuild step
     required: false
     default: false
+  kine-version:
+    description: Kine version tag from https://github.com/k3s-io/kine/releases
+    required: false
+    default: v0.17.0
 
 runs:
   using: "composite"
@@ -116,6 +120,7 @@ runs:
         make image \
           BOOTC_IMAGE_URL="${{ inputs.bootc-image-url }}" \
           BOOTC_IMAGE_TAG="${{ inputs.bootc-image-tag }}" \
+          KINE_VERSION="${{ inputs.kine-version }}" \
           ${make_opts[@]}
 
     - name: Run a test to verify that MicroShift is functioning properly
