@@ -24,6 +24,7 @@ The following options can be specified in the make command line using the `NAME=
 
 | Name            | Required | Default  | Comments |
 |-----------------|----------|----------|----------|
+| USHIFT_GIT_URL  | no       | https://github.com/openshift/microshift.git | MicroShift source repository URL |
 | USHIFT_GITREF   | no       | main     | [MicroShift repository branches](https://github.com/openshift/microshift/branches) |
 | OKD_VERSION_TAG | no       | latest   | [OKD version tags](https://quay.io/repository/okd/scos-release?tab=tags) |
 | SRPM_WORKDIR    | no       | /tmp/... | SRPM repository output directory |
@@ -46,9 +47,9 @@ SRPMs are available in '/tmp/microshift-srpms-1tzW3h'
 ```
 
 Notes:
-- The MicroShift repository branch and the OKD version tag used to build the
-  SRPM can be overridden by specifying `USHIFT_GITREF` and `OKD_VERSION_TAG`
-  make command line arguments.
+- The MicroShift repository URL and branch, and the OKD version tag used to
+  build the SRPM can be overridden by specifying `USHIFT_GIT_URL`,
+  `USHIFT_GITREF`, and `OKD_VERSION_TAG` make command line arguments.
 - The path to the `SRPM_WORKDIR` directory (either temporary or specified in
   the `make srpm` command line) is displayed in the end of the build procedure.
 

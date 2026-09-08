@@ -49,6 +49,7 @@ firewall-offline-cmd --zone=trusted --add-source=169.254.169.1
 firewall-offline-cmd --zone=public --add-port=6443/tcp
 firewall-offline-cmd --zone=public --add-port=2379/tcp
 firewall-offline-cmd --zone=public --add-port=2380/tcp
+firewall-offline-cmd --zone=public --add-port=10250/tcp
 
 # Configure limits for cAdvisor and kubelet
 cat > /etc/sysctl.d/99-microshift.conf <<EOF
