@@ -9,8 +9,12 @@ inputs:
   ushift-gitref:
     description: MicroShift git ref (branch, tag, commit)
     required: true
+  okd-branch:
+    description: OKD component source branch
+    required: false
+    default: release-5.0
   okd-version-tag:
-    description: OKD version tag from https://quay.io/repository/okd/scos-release?tab=tags
+    description: OKD version tag
     required: true
   bootc-image-url:
     description: Base Bootc image URL used in `make image` command
@@ -29,6 +33,10 @@ inputs:
   token:
     description: Token for the GitHub Container Registry
     required: true
+  whereabouts-only:
+    description: Build only Whereabouts and update an existing OKD release
+    required: false
+    default: false
 
 runs:
   using: "composite"
@@ -58,13 +66,16 @@ runs:
         # The 'staging' mode builds images locally AND pushes them to staging registry
         # Staging registry is automatically derived as: $(dirname target-registry)/okd-staging
         # This allows testing before promoting to production
+        mode=staging
+        [ "${{ inputs.whereabouts-only }}" = "true" ] && mode=staging-whereabouts
         TARGET_REGISTRY="${{ inputs.target-registry }}" ./src/okd/build_images.sh \
-          staging \
+          "${mode}" \
           "${{ inputs.okd-version-tag }}" \
-          "${{ inputs.ushift-gitref }}" \
+          "${{ inputs.okd-branch }}" \
           "${{ inputs.target-arch }}"
 
     - name: Build MicroShift RPMs using staging OKD images
+      if: inputs.whereabouts-only != 'true'
       shell: bash
       run: |
         # See https://github.com/microshift-io/microshift/blob/main/docs/build.md
@@ -93,6 +104,7 @@ runs:
           RPM_OUTDIR=/mnt/rpms
 
     - name: Build MicroShift bootc container image
+      if: inputs.whereabouts-only != 'true'
       shell: bash
       run: |
         # See https://github.com/microshift-io/microshift/blob/main/docs/build.md
@@ -106,6 +118,7 @@ runs:
           BOOTC_IMAGE_TAG="${{ inputs.bootc-image-tag }}" \
 
     - name: Run a test to verify that MicroShift is functioning properly
+      if: inputs.whereabouts-only != 'true'
       shell: bash
       run: |
         # See https://github.com/microshift-io/microshift/blob/main/docs/run.md
@@ -128,10 +141,12 @@ runs:
         cd ${GITHUB_WORKSPACE}/
         # Only push to production if all tests passed
         # This ensures we don't publish broken OKD images to production
+        mode=production
+        [ "${{ inputs.whereabouts-only }}" = "true" ] && mode=production-whereabouts
         TARGET_REGISTRY="${{ inputs.target-registry }}" ./src/okd/build_images.sh \
-          production \
+          "${mode}" \
           "${{ inputs.okd-version-tag }}" \
-          "${{ inputs.ushift-gitref }}" \
+          "${{ inputs.okd-branch }}" \
           "${{ inputs.target-arch }}"
 
     # Uncomment this to enable tmate-debug on failure

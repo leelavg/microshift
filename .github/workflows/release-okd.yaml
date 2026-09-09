@@ -6,29 +6,33 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
-      ushift-gitref:
-        default: "main"
-        description: MicroShift git ref (branch, tag, commit)
-        type: string
       ushift-git-url:
         default: "https://github.com/openshift/microshift.git"
         description: MicroShift source repository URL
         type: string
+      ushift-gitref:
+        default: "main"
+        description: MicroShift git ref (branch, tag, commit)
+        type: string
+      okd-branch:
+        default: "release-5.0"
+        description: OKD component source branch
+        type: string
       okd-version-tag:
         default: "latest"
-        description: OKD version tag from https://quay.io/repository/okd/scos-release?tab=tags
+        description: OKD version tag
         type: string
-      okd-target-registry:
-        default: "ghcr.io/microshift-io/okd"
-        description: Target registry for the OKD release images for ARM
-        type: string
+      whereabouts-only:
+        default: false
+        description: Build only Whereabouts and update existing OKD releases
+        type: boolean
 
 # The workflow dispatch inputs are not inherited by the scheduled workflow runs.
 # Use environment variables to pass the inputs to the build action.
 env:
   USHIFT_GITREF: ${{ github.event.inputs.ushift-gitref || 'main' }}
   OKD_VERSION_TAG: ${{ github.event.inputs.okd-version-tag || 'latest' }}
-  OKD_TARGET_REGISTRY: ${{ github.event.inputs.okd-target-registry || 'ghcr.io/microshift-io/okd' }}
+  OKD_TARGET_REGISTRY: ${{ format('ghcr.io/{0}/microshift', github.repository_owner) }}
 
 jobs:
   build-okd-release:
@@ -45,7 +49,7 @@ jobs:
         uses: actions/checkout@v4
 
       # Always get the latest available 'amd64' OKD version tag and attempt
-      # to build 'arm64' images for it
+      # to build 'arm64' images for it.
       - name: Detect OKD version tag
         id: detect-okd-version
         uses: ./.github/actions/okd-version
@@ -66,12 +70,14 @@ jobs:
       - name: Run the OKD release images build action
         uses: ./.github/actions/build-okd
         with:
-          ushift-git-url: ${{ github.event.inputs.ushift-git-url || 'https://github.com/openshift/microshift.git' }}
+          ushift-git-url: ${{ inputs.ushift-git-url }}
           ushift-gitref: ${{ env.USHIFT_GITREF }}
+          okd-branch: ${{ inputs.okd-branch }}
           okd-version-tag: ${{ steps.set-version.outputs.okd-version-tag }}
           target-arch: arm64
           target-registry: ${{ env.OKD_TARGET_REGISTRY }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          whereabouts-only: ${{ inputs.whereabouts-only }}
 
   cleanup-staging:
     name: Cleanup staging registry

@@ -26,8 +26,16 @@ usage() {
   echo "      Build OKD images locally and push to staging registry"
   echo "      (${STAGING_REGISTRY})"
   echo ""
+  echo "  staging-whereabouts <okd-version> <ocp-branch> <target-arch>"
+  echo "      Build only Whereabouts and update an existing release"
+  echo "      (${STAGING_REGISTRY})"
+  echo ""
   echo "  production <okd-version> <ocp-branch> <target-arch>"
   echo "      Push previously built images to production registry"
+  echo "      (${PRODUCTION_REGISTRY})"
+  echo ""
+  echo "  production-whereabouts <okd-version> <ocp-branch> <target-arch>"
+  echo "      Promote only Whereabouts and its updated release"
   echo "      (${PRODUCTION_REGISTRY})"
   echo ""
   echo "  list-packages <okd-version>"
@@ -410,7 +418,7 @@ create_new_okd_release() {
   if [ "${TARGET_ARCH}" != "arm64" ] ; then
     haproxy_router_image=""
   else
-    haproxy_router_image="haproxy-router=${images_sha[haproxy-router]}"
+    haproxy_router_image="haproxy-router=${images_sha[haproxy-router]} haproxy-router-haproxy32=${images_sha[haproxy-router]}"
   fi
 
   # shellcheck disable=SC2086
@@ -429,7 +437,7 @@ create_new_okd_release() {
       "operator-registry=${images_sha[operator-registry]}" \
       "multus-cni-microshift=${images_sha[multus-cni-microshift]}" \
       "containernetworking-plugins-microshift=${images_sha[containernetworking-plugins-microshift]}" \
-      "whereabouts-cni=${images_sha[whereabouts-cni]}" \
+      "multus-whereabouts-ipam-cni=${images_sha[whereabouts-cni]}" \
       --to-image "${OKD_RELEASE_IMAGE}"
 
       # "ovn-kubernetes-base=${images_sha[ovn-kubernetes-base]}" \
@@ -504,12 +512,60 @@ push_staging() {
   echo "  $0 production ${OKD_VERSION} ${OCP_BRANCH} ${TARGET_ARCH}"
 }
 
+push_whereabouts_release() {
+  local -r staging_whereabouts="${STAGING_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
+  local -r staging_release="${STAGING_REGISTRY}/okd-release-${TARGET_ARCH}:${OKD_VERSION}"
+  local source_release
+
+  # Use the matching upstream release as the base and replace only Whereabouts.
+  if [ "${TARGET_ARCH}" = "arm64" ]; then
+    source_release="ghcr.io/microshift-io/okd/okd-release-arm64:${OKD_VERSION}"
+  else
+    source_release="quay.io/okd/scos-release:${OKD_VERSION}"
+  fi
+
+  check_podman_login
+  check_release_image_exists
+  skopeo inspect "docker://${source_release}" >/dev/null
+  base_image
+  whereabouts_cni_image
+  podman tag "${images[whereabouts-cni]}" "${staging_whereabouts}"
+  podman push "${staging_whereabouts}"
+
+  local -r whereabouts_digest="$(skopeo inspect --format '{{.Name}}@{{.Digest}}' "docker://${staging_whereabouts}")"
+  oc adm release new \
+    --from-release "${source_release}" \
+    --keep-manifest-list \
+    "multus-whereabouts-ipam-cni=${whereabouts_digest}" \
+    --to-image "${staging_release}"
+  oc adm release info "${staging_release}" --image-for=multus-whereabouts-ipam-cni >/dev/null
+}
+
 # Production mode: retag staging images and push to production registry
 push_production() {
   check_podman_login
   check_release_image_exists
   retag_staging_to_production
   push_okd_images
+}
+
+push_whereabouts_production() {
+  local -r staging_whereabouts="${STAGING_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
+  local -r production_whereabouts="${PRODUCTION_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
+  local -r staging_release="${STAGING_REGISTRY}/okd-release-${TARGET_ARCH}:${OKD_VERSION}"
+  local -r production_release="${PRODUCTION_REGISTRY}/okd-release-${TARGET_ARCH}:${OKD_VERSION}"
+
+  check_podman_login
+  podman tag "${staging_whereabouts}" "${production_whereabouts}"
+  podman push "${production_whereabouts}"
+
+  local -r whereabouts_digest="$(skopeo inspect --format '{{.Name}}@{{.Digest}}' "docker://${production_whereabouts}")"
+  oc adm release new \
+    --from-release "${staging_release}" \
+    --keep-manifest-list \
+    "multus-whereabouts-ipam-cni=${whereabouts_digest}" \
+    --to-image "${production_release}"
+  oc adm release info "${production_release}" --image-for=multus-whereabouts-ipam-cni >/dev/null
 }
 
 # List packages mode: output staging package names for cleanup
@@ -569,7 +625,8 @@ if [[ "${MODE}" != "list-packages" ]]; then
   TARGET_ARCH="$4"
 
   # Validate mode
-  if [[ "${MODE}" != "staging" ]] && [[ "${MODE}" != "production" ]]; then
+  if [[ "${MODE}" != "staging" ]] && [[ "${MODE}" != "staging-whereabouts" ]] && \
+     [[ "${MODE}" != "production" ]] && [[ "${MODE}" != "production-whereabouts" ]]; then
     echo "ERROR: Invalid mode '${MODE}'. Must be 'staging' or 'production'"
     usage
   fi
@@ -589,9 +646,9 @@ if [[ "${MODE}" != "list-packages" ]]; then
   esac
 
   # Set target registry based on mode
-  if [[ "${MODE}" == "staging" ]]; then
+  if [[ "${MODE}" == "staging" ]] || [[ "${MODE}" == "staging-whereabouts" ]]; then
     TARGET_REGISTRY="${STAGING_REGISTRY}"
-  elif [[ "${MODE}" == "production" ]]; then
+  elif [[ "${MODE}" == "production" ]] || [[ "${MODE}" == "production-whereabouts" ]]; then
     TARGET_REGISTRY="${PRODUCTION_REGISTRY}"
   fi
 
@@ -626,7 +683,13 @@ if [[ "${MODE}" == "list-packages" ]]; then
 elif [[ "${MODE}" == "staging" ]]; then
   check_prereqs
   push_staging
+elif [[ "${MODE}" == "staging-whereabouts" ]]; then
+  check_prereqs
+  push_whereabouts_release
 elif [[ "${MODE}" == "production" ]]; then
   check_prereqs
   push_production
+elif [[ "${MODE}" == "production-whereabouts" ]]; then
+  check_prereqs
+  push_whereabouts_production
 fi

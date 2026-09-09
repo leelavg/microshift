@@ -206,7 +206,7 @@ replace_whereabouts_assets() {
     local -r release_json="${MICROSHIFT_ROOT}/assets/optional/whereabouts/release-whereabouts-${ARCH}.json"
     local -r kustomization_arch_file="${MICROSHIFT_ROOT}/assets/optional/whereabouts/kustomization.${ARCH}.yaml"
     local image_with_hash
-    image_with_hash=$(oc_release_info "${okd_url}" "${okd_releaseTag}" "whereabouts-cni")
+    image_with_hash=$(oc_release_info "${okd_url}" "${okd_releaseTag}" "multus-whereabouts-ipam-cni")
     echo "[${ARCH}] Replacing 'whereabouts-cni' with '${image_with_hash}'"
     local image_name="${image_with_hash%%@*}"
     local image_hash="${image_with_hash##*@}"
