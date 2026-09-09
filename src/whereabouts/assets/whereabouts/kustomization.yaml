@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- 00-namespace.yaml
+- 00-ippool-crd.yaml
+- 01-overlappingrangeipreservation-crd.yaml
+- 02-service-account.yaml
+- 03-cluster-role.yaml
+- 04-cluster-role-binding.yaml
+- 05-configmap.yaml
+- 06-daemonset.yaml
+- 07-reconciler-daemonset.yaml

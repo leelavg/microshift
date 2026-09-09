@@ -198,6 +198,27 @@ replace_multus_assets() {
     done
 }
 
+replace_whereabouts_assets() {
+    local -r okd_url=$1
+    local -r okd_releaseTag=$2
+    local -r temp_json="$(mktemp "/tmp/release-whereabouts-${ARCH}.XXXXX.json")"
+
+    local -r release_json="${MICROSHIFT_ROOT}/assets/optional/whereabouts/release-whereabouts-${ARCH}.json"
+    local -r kustomization_arch_file="${MICROSHIFT_ROOT}/assets/optional/whereabouts/kustomization.${ARCH}.yaml"
+    local image_with_hash
+    image_with_hash=$(oc_release_info "${okd_url}" "${okd_releaseTag}" "whereabouts-cni")
+    echo "[${ARCH}] Replacing 'whereabouts-cni' with '${image_with_hash}'"
+    local image_name="${image_with_hash%%@*}"
+    local image_hash="${image_with_hash##*@}"
+
+    "${MICROSHIFT_ROOT}"/_output/bin/yq eval \
+        ".images[] |= select(.name == \"whereabouts-cni\") |= (.newName = \"${image_name}\" | .digest = \"${image_hash}\")" \
+        -i "${kustomization_arch_file}"
+    jq --arg img "${image_with_hash}" '.images["whereabouts-cni"] = $img' \
+        "${release_json}" >"${temp_json}"
+    mv "${temp_json}" "${release_json}"
+}
+
 fix_rpm_spec() {
     # Fix the RPM spec by removing the microshift-networking package hard dependency
     sed -i 's/Requires: microshift-networking/Recommends: microshift-networking/' "${MICROSHIFT_ROOT}/packaging/rpm/microshift.spec"
@@ -209,6 +230,7 @@ usage() {
     echo "$(basename "$0") --replace         OKD_URL RELEASE_TAG    replace MicroShift assets with OKD upstream images"
     echo "$(basename "$0") --replace-kindnet OKD_URL RELEASE_TAG    replace Kindnet assets with OKD upstream images"
     echo "$(basename "$0") --replace-multus  OKD_URL RELEASE_TAG    replace Multus assets with OKD upstream images"
+    echo "$(basename "$0") --replace-whereabouts OKD_URL RELEASE_TAG replace Whereabouts assets with OKD upstream images"
     exit 1
 }
 
@@ -233,6 +255,10 @@ case "$1" in
 --replace-multus)
     verify_okd_release    "$2" "$3"
     replace_multus_assets "$2" "$3"
+    ;;
+--replace-whereabouts)
+    verify_okd_release        "$2" "$3"
+    replace_whereabouts_assets "$2" "$3"
     ;;
 --verify)
     verify_okd_release "$2" "$3"

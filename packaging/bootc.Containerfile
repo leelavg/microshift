@@ -32,6 +32,7 @@ RUN ${REPO_CONFIG_SCRIPT} -create ${USHIFT_RPM_REPO_PATH} && \
     else \
         dnf install -y microshift-networking ; \
     fi && \
+    dnf install -y microshift-whereabouts microshift-whereabouts-release-info && \
     if [ "${WITH_TOPOLVM}" = "1" ] ; then \
         dnf install -y microshift-topolvm microshift-topolvm-release-info ; \
     fi && \

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: whereabouts-reconciler
+  namespace: openshift-multus
+spec:
+  selector:
+    matchLabels:
+      app: whereabouts-reconciler
+  template:
+    metadata:
+      labels:
+        app: whereabouts-reconciler
+    spec:
+      hostNetwork: true
+      serviceAccountName: whereabouts
+      nodeSelector:
+        dfmicro.io/whereabouts: enabled
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: whereabouts-reconciler
+        image: whereabouts-cni
+        command: ["/bin/sh", "-c"]
+        args:
+        - /usr/src/whereabouts/bin/entrypoint.sh -log-level debug
+        env:
+        - name: WHEREABOUTS_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: cni-config
+          mountPath: /host/etc/cni/net.d
+        - name: config
+          mountPath: /cron-schedule
+      volumes:
+      - name: cni-config
+        hostPath:
+          path: /etc/cni/net.d
+          type: Directory
+      - name: config
+        configMap:
+          name: whereabouts-config
+          items:
+          - key: reconciler_cron_expression
+            path: config

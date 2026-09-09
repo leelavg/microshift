@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: whereabouts
+  namespace: openshift-multus
+spec:
+  selector:
+    matchLabels:
+      app: whereabouts
+  template:
+    metadata:
+      labels:
+        app: whereabouts
+    spec:
+      hostNetwork: true
+      serviceAccountName: whereabouts
+      nodeSelector:
+        dfmicro.io/whereabouts: enabled
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: whereabouts
+        image: whereabouts-cni
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -eu
+          mkdir -p /host/run/cni/bin /host/etc/cni/net.d/whereabouts.d
+          if [ -x /usr/src/whereabouts/bin/whereabouts ]; then src=/usr/src/whereabouts/bin/whereabouts; else src=/usr/src/whereabouts/rhel9/bin/whereabouts; fi
+          cp "$src" /host/run/cni/bin/whereabouts
+          chmod 755 /host/run/cni/bin/whereabouts
+          cp /etc/whereabouts/whereabouts.conf /host/etc/cni/net.d/whereabouts.d/whereabouts.conf
+          while true; do sleep infinity; done
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: cni-bin
+          mountPath: /host/run/cni/bin
+        - name: cni-config
+          mountPath: /host/etc/cni/net.d
+        - name: config
+          mountPath: /etc/whereabouts
+      - name: token-watcher
+        image: whereabouts-cni
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -eu
+          dir=/host/etc/cni/net.d/whereabouts.d
+          mkdir -p "$dir"
+          token_file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          ca_file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          last_token=
+          last_ca=
+          while true; do
+            token_sum=$(md5sum "$token_file" | awk '{print $1}')
+            ca_sum=$(md5sum "$ca_file" | awk '{print $1}')
+            if [ "$token_sum" != "$last_token" ] || [ "$ca_sum" != "$last_ca" ]; then
+              ca=$(base64 -w0 "$ca_file")
+              token=$(cat "$token_file")
+              tmp=$(mktemp "$dir/whereabouts.kubeconfig.XXXXXX")
+              cat > "$tmp" <<EOF
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - name: local
+            cluster:
+              server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
+              certificate-authority-data: ${ca}
+          users:
+          - name: whereabouts
+            user:
+              token: ${token}
+          contexts:
+          - name: whereabouts-context
+            context:
+              cluster: local
+              user: whereabouts
+              namespace: openshift-multus
+          current-context: whereabouts-context
+          EOF
+              chmod 600 "$tmp"
+              mv -f "$tmp" "$dir/whereabouts.kubeconfig"
+              last_token=$token_sum
+              last_ca=$ca_sum
+            fi
+            sleep 60
+          done
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: cni-config
+          mountPath: /host/etc/cni/net.d
+      volumes:
+      - name: cni-bin
+        hostPath:
+          path: /run/cni/bin
+          type: DirectoryOrCreate
+      - name: cni-config
+        hostPath:
+          path: /etc/cni/net.d
+          type: Directory
+      - name: config
+        configMap:
+          name: whereabouts-config
+          items:
+          - key: whereabouts.conf
+            path: whereabouts.conf

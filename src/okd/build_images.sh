@@ -336,6 +336,19 @@ containernetworking_plugins_microshift_image() {
   podman build --platform "linux/${TARGET_ARCH}" -t "${images[containernetworking-plugins-microshift]}" -f "${dockerfile_path}" .
 }
 
+# Function to handle whereabouts-cni image repository
+whereabouts_cni_image() {
+  local -r repo_url="https://github.com/openshift/whereabouts-cni"
+  local -r dockerfile_path="Dockerfile.openshift"
+  local -r repo="${WORKDIR}/$(basename "${repo_url}")"
+
+  git_clone_repo "${repo_url}" "${OCP_BRANCH}" "${repo}"
+  sed -i 's|^FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang|FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang|' "${dockerfile_path}"
+  sed -i "s|^FROM registry.ci.openshift.org/ocp/.*:base-rhel9|FROM ${images[base]}|" "${dockerfile_path}"
+
+  podman build --platform "linux/${TARGET_ARCH}" -t "${images[whereabouts-cni]}" -f "${dockerfile_path}" .
+}
+
 # Run all the image creation procedures
 create_images() {
   base_image
@@ -351,6 +364,7 @@ create_images() {
   operator_lifecycle_manager_image
   multus_cni_microshift_image
   containernetworking_plugins_microshift_image
+  whereabouts_cni_image
   # ovn_kubernetes_microshift_image
 }
 
@@ -415,6 +429,7 @@ create_new_okd_release() {
       "operator-registry=${images_sha[operator-registry]}" \
       "multus-cni-microshift=${images_sha[multus-cni-microshift]}" \
       "containernetworking-plugins-microshift=${images_sha[containernetworking-plugins-microshift]}" \
+      "whereabouts-cni=${images_sha[whereabouts-cni]}" \
       --to-image "${OKD_RELEASE_IMAGE}"
 
       # "ovn-kubernetes-base=${images_sha[ovn-kubernetes-base]}" \
@@ -600,6 +615,7 @@ images=(
     [operator-registry]="${TARGET_REGISTRY}/operator-registry:${OKD_VERSION}-${TARGET_ARCH}"
     [multus-cni-microshift]="${TARGET_REGISTRY}/multus-cni-microshift:${OKD_VERSION}-${TARGET_ARCH}"
     [containernetworking-plugins-microshift]="${TARGET_REGISTRY}/containernetworking-plugins-microshift:${OKD_VERSION}-${TARGET_ARCH}"
+    [whereabouts-cni]="${TARGET_REGISTRY}/whereabouts-cni:${OKD_VERSION}-${TARGET_ARCH}"
     # [ovn-kubernetes-base]="${TARGET_REGISTRY}/ovn-kubernetes-base:${OKD_VERSION}-${TARGET_ARCH}"
     # [ovn-kubernetes-microshift]="${TARGET_REGISTRY}/ovn-kubernetes-microshift:${OKD_VERSION}-${TARGET_ARCH}"
 )
