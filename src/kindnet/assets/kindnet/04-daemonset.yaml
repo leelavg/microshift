@@ -42,7 +42,10 @@ spec:
               fieldRef:
                 fieldPath: status.podIP
           - name: POD_SUBNET
-            value: 10.244.0.0/16
+            valueFrom:
+              configMapKeyRef:
+                name: kindnet-config
+                key: podSubnet
           resources:
             requests:
               cpu: 100m
@@ -59,7 +62,7 @@ spec:
                 command:
                   - /bin/sh
                   - -c
-                  - while [ ! -f /etc/cni/net.d/10-kindnet.conflist ]; do sleep 1; done; cd /etc/cni/net.d && ln -srf 10-kindnet.conflist 10-ovn-kubernetes.conf
+                  - cd /etc/cni/net.d && ln -srf 10-kindnet.conflist 10-ovn-kubernetes.conf
           volumeMounts:
             - name: cni
               mountPath: /etc/cni/net.d
@@ -80,6 +83,7 @@ spec:
       volumes:
         - hostPath:
             path: /etc/cni/net.d
+            type: DirectoryOrCreate
           name: cni
         - hostPath:
             path: /run/xtables.lock

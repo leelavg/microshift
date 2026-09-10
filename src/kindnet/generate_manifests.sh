@@ -12,8 +12,8 @@ KINDNET_IMAGE_BASE="docker.io/kindest/kindnetd"
 KUBE_PROXY_IMAGE_BASE="registry.k8s.io/kube-proxy"
 
 # Network configuration (can be overridden)
-POD_SUBNET="10.244.0.0/16"
 CLUSTER_CIDR="10.42.0.0/16"
+POD_SUBNET="${CLUSTER_CIDR}"
 
 #######################################
 # Kindnet image resolution
@@ -115,6 +115,17 @@ metadata:
     openshift.io/node-selector: ""
     openshift.io/description: "kindnet Kubernetes components"
     workload.openshift.io/allowed: "management"
+EOF
+
+    # 00-kindnet-config.yaml
+    cat >"${KINDNET_ASSETS_DIR}/00-kindnet-config.yaml" <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kindnet-config
+  namespace: kube-kindnet
+data:
+  podSubnet: ${POD_SUBNET}
 EOF
 
     # 01-service-account.yaml
@@ -280,7 +291,10 @@ spec:
               fieldRef:
                 fieldPath: status.podIP
           - name: POD_SUBNET
-            value: ${POD_SUBNET}
+            valueFrom:
+              configMapKeyRef:
+                name: kindnet-config
+                key: podSubnet
           resources:
             requests:
               cpu: 100m
@@ -291,6 +305,13 @@ spec:
                 - NET_ADMIN
                 - NET_RAW
             privileged: false
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - cd /etc/cni/net.d && ln -srf 10-kindnet.conflist 10-ovn-kubernetes.conf
           volumeMounts:
             - name: cni
               mountPath: /etc/cni/net.d
@@ -311,6 +332,7 @@ spec:
       volumes:
         - hostPath:
             path: /etc/cni/net.d
+            type: DirectoryOrCreate
           name: cni
         - hostPath:
             path: /run/xtables.lock
@@ -330,6 +352,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - 00-namespace.yaml
+  - 00-kindnet-config.yaml
   - 01-service-account.yaml
   - 02-cluster-role.yaml
   - 03-cluster-role-binding.yaml
@@ -464,7 +487,7 @@ data:
   config.conf: |
     apiVersion: kubeproxy.config.k8s.io/v1alpha1
     kind: KubeProxyConfiguration
-    clusterCIDR: ${CLUSTER_CIDR}
+    detectLocalMode: NodeCIDR
     mode: iptables
     clientConnection:
       kubeconfig: /var/lib/kubeconfig
@@ -515,6 +538,12 @@ spec:
           command:
             - /usr/bin/kube-proxy
             - --config=/var/lib/kube-proxy/config.conf
+            - --hostname-override=$(NODE_NAME)
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - name: config
               mountPath: /var/lib/kube-proxy/
