@@ -75,9 +75,7 @@ COPY ./src/topolvm/release/ ./assets/optional/topolvm/
 COPY ./src/whereabouts/whereabouts.spec "${SPEC_WHEREABOUTS}"
 COPY ./src/whereabouts/assets/whereabouts/ ./assets/optional/whereabouts/
 
-RUN ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-kindnet "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
-    ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-kindnet "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)" && \
-    ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
+RUN ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
     ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-multus  "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)" && \
     ARCH="x86_64"  "${USHIFT_PREBUILD_SCRIPT}" --replace-whereabouts "${OKD_RELEASE_IMAGE_X86_64}"  "$(cat /tmp/okd_version_x86_64)" && \
     ARCH="aarch64" "${USHIFT_PREBUILD_SCRIPT}" --replace-whereabouts "${OKD_RELEASE_IMAGE_AARCH64}" "$(cat /tmp/okd_version_aarch64)"
