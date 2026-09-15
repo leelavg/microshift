@@ -44,6 +44,10 @@ inputs:
     description: Enable OLM
     required: false
     default: 0
+  with-topolvm:
+    description: Build the image with TopoLVM
+    required: false
+    default: 1
   node-count:
     description: Number of nodes in the MicroShift cluster
     required: false
@@ -137,6 +141,7 @@ runs:
         [ "${{ inputs.ovnk-networking }}"  = "1" ] && make_opts+=("WITH_KINDNET=0")
         [ "${{ inputs.with-multus }}"      = "1" ] && make_opts+=("WITH_MULTUS=1")
         [ "${{ inputs.with-olm }}"         = "1" ] && make_opts+=("WITH_OLM=1")
+        [ "${{ inputs.with-topolvm }}"     = "0" ] && make_opts+=("WITH_TOPOLVM=0")
 
         make image \
           BOOTC_IMAGE_URL="${{ inputs.bootc-image-url }}" \
@@ -154,6 +159,7 @@ runs:
         # Adjust the make options based on the inputs
         make_opts=()
         [ "${{ inputs.isolated-network }}" = "1" ] && make_opts+=("ISOLATED_NETWORK=1")
+        make_opts+=("WITH_TOPOLVM=${{ inputs.with-topolvm }}")
 
         # Run the MicroShift container
         make run ${make_opts[@]}

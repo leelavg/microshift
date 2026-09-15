@@ -43,6 +43,10 @@ on:
         description: Build with OLM
         default: 1
         type: number
+      with-topolvm:
+        description: Build with TopoLVM
+        default: 1
+        type: number
       build-deb:
         description: Build DEB packages
         default: false
@@ -117,6 +121,7 @@ jobs:
           build: ${{ inputs.build }}
           with-multus: ${{ inputs.with-multus }}
           with-olm: ${{ inputs.with-olm }}
+          with-topolvm: ${{ inputs.with-topolvm }}
           kine-version: ${{ inputs.kine-version }}
 
       # Test the local container image with the quick start and clean procedures
@@ -128,6 +133,7 @@ jobs:
         with:
           image-ref: localhost/microshift-okd:latest
           run-clean: false
+          with-topolvm: ${{ inputs.with-topolvm }}
 
       # Prepare the RPM archives to be released before converting to DEB packages.
       - name: Prepare the RPM archives
