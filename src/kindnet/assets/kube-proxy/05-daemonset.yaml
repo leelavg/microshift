@@ -44,7 +44,7 @@ spec:
           securityContext:
             privileged: true
       hostNetwork: true  # Allows the pod to use the host network
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       tolerations:
         - effect: NoSchedule
           operator: Exists

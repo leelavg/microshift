@@ -536,7 +536,7 @@ spec:
         - name: kube-proxy
           image: kube-proxy
           command:
-            - /usr/bin/kube-proxy
+            - /usr/local/bin/kube-proxy
             - --config=/var/lib/kube-proxy/config.conf
             - --hostname-override=$(NODE_NAME)
           env:
@@ -554,7 +554,7 @@ spec:
           securityContext:
             privileged: true
       hostNetwork: true  # Allows the pod to use the host network
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       tolerations:
         - effect: NoSchedule
           operator: Exists
